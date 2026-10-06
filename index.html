@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tour and Travels Management System</title>
+<style>
+:root{--bg:#f2f6f7;--panel:#fff;--line:#d5e0e3;--text:#10262b;--mute:#587077;--a:#0e7c86;--b:#e8791a;--ok:#1b8a4b;--bad:#c23b3b}
+@media (prefers-color-scheme:dark){:root{--bg:#0c1a1d;--panel:#13272b;--line:#244249;--text:#e6f2f4;--mute:#8fb0b6;--a:#3cc4cf;--b:#ffa04d;--ok:#4fd18a;--bad:#ff7a7a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:20px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:clamp(22px,4vw,30px)}
+.mode{font-size:13px;padding:4px 12px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.tabs{display:flex;gap:8px;margin:18px 0}
+.tabs button{flex:1;padding:11px;border:1.5px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;font:600 15px system-ui,sans-serif;cursor:pointer}
+.tabs button.on{background:var(--a);border-color:var(--a);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--b);outline-offset:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+h2{margin:0 0 12px;font-size:19px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.stat b{display:block;font-size:28px;color:var(--a)}
+.stat span{color:var(--mute);font-size:14px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
+label{font-size:13px;color:var(--mute);display:grid;gap:4px}
+input,select{padding:10px;border-radius:8px;border:1.5px solid var(--line);background:var(--bg);color:var(--text);font:inherit;width:100%}
+.go{background:var(--b);color:#fff;border:0;border-radius:8px;padding:11px 16px;font:600 15px system-ui,sans-serif;cursor:pointer}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:560px}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:15px}
+th{color:var(--mute);font-weight:600;font-size:13px}
+.del{background:none;border:1px solid var(--bad);color:var(--bad);border-radius:8px;padding:4px 10px;cursor:pointer}
+.bar{display:grid;grid-template-columns:130px 1fr 30px;gap:10px;align-items:center;margin:8px 0;font-size:14px}
+.bar i{display:block;height:14px;border-radius:7px;background:var(--a)}
+.empty{color:var(--mute);padding:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>Tour and Travels Management System</h1><span class="mode" id="mode"></span></header>
+<div class="tabs" role="tablist">
+  <button data-tab="dash" class="on">Dashboard</button>
+  <button data-tab="pk">Packages</button>
+  <button data-tab="bk">Bookings</button>
+</div>
+
+<section id="dash">
+  <div class="stats" id="stats"></div>
+  <div class="panel" style="margin-top:18px"><h2>Bookings by destination</h2><div id="chart"></div></div>
+</section>
+
+<section id="pk" hidden>
+  <div class="panel"><h2>Add a tour package</h2>
+    <form id="pkForm">
+      <label>Package name<input name="name" required></label>
+      <label>Destination<select name="dest" id="destSel" required></select></label>
+      <label>Days<select name="days" id="daySel" required></select></label>
+      <label>Price per person (INR)<input name="price" type="number" min="1" required></label>
+      <button class="go">Add package</button>
+    </form></div>
+  <div class="panel tw"><h2>All packages</h2><div id="pkList"></div></div>
+</section>
+
+<section id="bk" hidden>
+  <div class="panel"><h2>New booking</h2>
+    <form id="bkForm">
+      <label>Customer name<input name="cust" required></label>
+      <label>Phone<input name="phone" type="tel" required></label>
+      <label>Package<select name="pid" id="pidSel" required></select></label>
+      <label>Plan<select name="plan" id="planSel" required></select></label>
+      <label>Travel date<input name="date" type="date" required></label>
+      <button class="go">Book now</button>
+    </form></div>
+  <div class="panel tw"><h2>All bookings</h2><div id="bkList"></div></div>
+</section>
+</div>
+
+<script type="module">
+/* ===== Settings you can edit ===== */
+// To use Firebase, paste your web app config from Firebase console (Project settings).
+// Leave apiKey empty to run in demo mode, which saves data in this browser only.
+const FIREBASE_CONFIG = { apiKey:"", authDomain:"", projectId:"", appId:"" };
+const DESTINATIONS = { Puri:2200, Darjeeling:2800, Digha:1800, Purulia:1500 }; // price per person per day (INR), edit freely
+const PLANS = { Single:1, Couple:2, "Group of 3":3, "Group of 5":5 }; // booking plans and number of people
+const DURATIONS = [3, 5, 10];   // package lengths in days
+const SEED = {
+  packages: Object.entries(DESTINATIONS).flatMap(([dest,perDay],i)=>DURATIONS.map((days,j)=>(
+    {id:"p"+(i*DURATIONS.length+j+1),name:dest+" "+days+"-Day Tour",dest,days,price:perDay*days}))),
+  bookings:[]
+};
+const STATUSES = ["Pending","Confirmed","Cancelled"];
+/* ================================= */
+
+async function makeStore(){
+  if(FIREBASE_CONFIG.apiKey){
+    const V="10.12.2", base="https://www.gstatic.com/firebasejs/"+V;
+    const {initializeApp}=await import(base+"/firebase-app.js");
+    const f=await import(base+"/firebase-firestore.js");
+    const d=f.getFirestore(initializeApp(FIREBASE_CONFIG));
+    return {mode:"Firebase connected",
+      async list(c){const s=await f.getDocs(f.collection(d,c));return s.docs.map(x=>({id:x.id,...x.data()}))},
+      async add(c,o){await f.addDoc(f.collection(d,c),o)},
+      async set(c,id,o){await f.updateDoc(f.doc(d,c,id),o)},
+      async del(c,id){await f.deleteDoc(f.doc(d,c,id))}};
+  }
+  const K="ttms-data", read=()=>JSON.parse(localStorage.getItem(K)||"null")||structuredClone(SEED), save=v=>localStorage.setItem(K,JSON.stringify(v));
+  return {mode:"Demo mode (saved in this browser)",
+    async list(c){return read()[c]},
+    async add(c,o){const v=read();v[c].push({id:crypto.randomUUID(),...o});save(v)},
+    async set(c,id,o){const v=read();Object.assign(v[c].find(x=>x.id===id),o);save(v)},
+    async del(c,id){const v=read();v[c]=v[c].filter(x=>x.id!==id);save(v)}};
+}
+
+const $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr=n=>"₹"+Number(n).toLocaleString("en-IN");
+const store=await makeStore();
+$("#mode").textContent=store.mode;
+let P=[],B=[];
+$("#destSel").innerHTML=Object.keys(DESTINATIONS).map(d=>`<option>${d}</option>`).join("");
+$("#planSel").innerHTML=Object.entries(PLANS).map(([k,v])=>`<option value="${k}">${k} (${v} ${v>1?"people":"person"})</option>`).join("");
+$("#daySel").innerHTML=DURATIONS.map(d=>`<option value="${d}">${d} days</option>`).join("");
+
+async function refresh(){
+  P=await store.list("packages"); B=await store.list("bookings");
+  const live=B.filter(b=>b.status!=="Cancelled");
+  const rev=live.reduce((s,b)=>s+b.total,0);
+  $("#stats").innerHTML=[["Packages",P.length],["Bookings",B.length],["Pending",B.filter(b=>b.status==="Pending").length],["Revenue",inr(rev)]]
+    .map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  const by={}; live.forEach(b=>by[b.dest]=(by[b.dest]||0)+1);
+  const max=Math.max(1,...Object.values(by));
+  $("#chart").innerHTML=Object.keys(by).length?Object.entries(by).map(([k,v])=>`<div class="bar"><span>${esc(k)}</span><i style="width:${v/max*100}%"></i><b>${v}</b></div>`).join(""):'<p class="empty">No bookings yet. Add one in the Bookings tab.</p>';
+  $("#pkList").innerHTML=P.length?`<table><tr><th>Package</th><th>Destination</th><th>Days</th><th>Price</th><th></th></tr>${P.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.dest)}</td><td>${p.days}</td><td>${inr(p.price)}</td><td><button class="del" data-del="packages" data-id="${esc(p.id)}">Delete</button></td></tr>`).join("")}</table>`:'<p class="empty">No packages yet. Add your first one above.</p>';
+  $("#pidSel").innerHTML=P.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} (${inr(p.price)})</option>`).join("");
+  $("#bkList").innerHTML=B.length?`<table><tr><th>Customer</th><th>Package</th><th>Date</th><th>Plan</th><th>Total</th><th>Status</th><th></th></tr>${B.map(b=>`<tr><td>${esc(b.cust)}<br><small>${esc(b.phone)}</small></td><td>${esc(b.pkg)}</td><td>${esc(b.date)}</td><td>${esc(b.plan||"")} (${b.n})</td><td>${inr(b.total)}</td><td><select data-st="${esc(b.id)}" aria-label="Status">${STATUSES.map(s=>`<option${s===b.status?" selected":""}>${s}</option>`).join("")}</select></td><td><button class="del" data-del="bookings" data-id="${esc(b.id)}">Delete</button></td></tr>`).join("")}</table>`:'<p class="empty">No bookings yet. Create one above.</p>';
+}
+
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  ["dash","pk","bk"].forEach(id=>$("#"+id).hidden=id!==b.dataset.tab);
+});
+$("#pkForm").onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
+  await store.add("packages",{name:f.name.trim(),dest:f.dest.trim(),days:+f.days,price:+f.price});e.target.reset();refresh()};
+$("#bkForm").onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
+  const p=P.find(x=>x.id===f.pid), n=PLANS[f.plan]; if(!p)return alert("Add a package first.");
+  await store.add("bookings",{cust:f.cust.trim(),phone:f.phone.trim(),pid:p.id,pkg:p.name,dest:p.dest,plan:f.plan,n,date:f.date,total:p.price*n,status:"Pending"});e.target.reset();refresh()};
+document.body.addEventListener("click",async e=>{const d=e.target.closest("[data-del]");
+  if(d&&confirm("Delete this item?")){await store.del(d.dataset.del,d.dataset.id);refresh()}});
+document.body.addEventListener("change",async e=>{if(e.target.dataset.st){await store.set("bookings",e.target.dataset.st,{status:e.target.value});refresh()}});
+refresh();
+</script>
+</body>
+</html>
